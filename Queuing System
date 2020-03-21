@@ -1,0 +1,36 @@
+proc iml;
+start main;
+a = j(1000,1,.);
+b = j(1000,1,.);
+c = j(1000,1,.);
+dt = j(1000,1,.);
+st = j(1000,1,.);
+cost = j(1000,1,.);
+a[1]=0;
+b[1]=0;
+dt[1]= rand("Exponential",10);
+st[1]= rand("Exponential",8);
+c[1]=b[1]+st[1];
+cost[1]=c[1]-a[1];
+
+do i = 2 to 1000;
+	dt[i]=rand("Exponential",10);
+	st[i]=rand("Exponential",8);
+	a[i]=a[i-1]+dt[i];
+	
+	if a[i] > c[i-1]
+	then b[i]=a[i];
+	
+	else if a[i] < c[i-1]
+	then b[i]=c[i-1];
+	
+	c[i]=b[i]+st[i];
+	cost[i]=c[i]-a[i];
+
+end;
+
+mc = mean(cost);
+print cost;
+print mc;
+finish main;
+run;
