@@ -1,0 +1,252 @@
+*******************************;
+* Lab Time Series 1 Exercises *;
+*******************************;
+
+/* 1. Import and manage the data from New Zealand Car Licenses (NZCarLicenses.xlsx). */
+
+proc import out=nzcar
+datafile= "/home/u47247130/sasuser.v94/NZCarLicenses.xlsx"
+dbms=xlsx
+replace;
+getnames=yes;
+datarow=2;
+run;
+proc print;
+run;
+
+/* 2. Discuss the characteristics of time series. */
+
+data nzcar;
+set nzcar;
+format dateofcar yyq4.;
+dateofcar = input(Date, yyq6.);
+run;
+
+proc gplot data=nzcar;
+	plot cars*dateofcar / vaxis= axis1 haxis= axis2;
+	axis1 label = (angle = 90 'nzcarss');
+	axis2 label = ('season');
+
+run; quit;	
+/* 3. Perform X-11 decomposition and discuss the results. */
+
+proc x11 data=nzcar;
+quarterly date= dateofcar; /*注意季度的数值用这个*/
+var cars;
+tables b1 d10 d11 d12;
+output out=out b1=cars d11=d11;
+run; quit; 
+
+proc gplot data=out;
+	plot cars*dateofcar d11*dateofcar / overlay ;
+	symbol1 i=join v=star c=bibg;
+	symbol2 i=join v=star c=bib;
+run; quit;
+
+*************************;
+**** Data Management ****;
+*************************;
+
+/* SAS_MATH803_TimeSeries1.sas */
+TITLE1 'New Zealand Monthly Overseas Visitor Arrivals';
+TITLE2 'Dec. 2009�Dec. 2019';
+
+/* Read in the data (Data-step) */
+PROC IMPORT OUT = NZTourists
+	DATAFILE = "/home/u47247130/sasuser.v94/NZTourists.xlsx"
+	DBMS = xlsx REPLACE;
+	GETNAMES = YES;
+	DATAROW = 2;
+RUN;
+proc print;
+run;
+
+/* add a row of standard date */
+data NZtourists;
+     set NZTourists;
+     Date = mdy( MONTH(DateTime), 1, YEAR(DateTime) );
+     format Date mmyys7.; /*时间写法 https://v8doc.sas.com/sashtml/lgref/z0199314.htm*/
+run;
+
+proc print data = NZtourists;
+run;
+
+/* Plot the data */
+PROC GPLOT DATA = NZtourists;
+	PLOT Actual*Date / VAXIS = AXIS1 HAXIS = AXIS2;
+    AXIS1 label = (angle = 90 'No. of Tourists');
+    AXIS2 label = ('Month')
+          order = ('01dec09'd to '01dec19'd by year);	
+RUN; QUIT;
+
+/* With Seasonally Adjusted - another column in the table*/
+PROC GPLOT DATA = NZtourists;
+	PLOT Actual*Date Seasonally_adjusted*Date  / overlay legend VAXIS = AXIS1 HAXIS = AXIS2;
+    symbol1 i = join v = star c = green;
+    symbol2 i = join v = star c = brown;
+RUN; QUIT;
+
+/* X-11 for NZ Tourists Data */
+proc x11; 
+ monthly date = Date;
+ var Actual;
+ tables b1 d10 d11 d12 d13 f2; /*define the tables you call to show*/
+ output out = out2 b1 = Actual d10 = d10 d11 = adjusted d12 = d12 d13 = d13 f1 = f1; 
+ /*define what data to output. these 2 lines are irrelevant
+ out2里面有所有的数据，在SAS输出数据那个tab里可以找到work.out2，
+ 这样可以在一个function里plot不同的column.
+ 另外，B1是用来在out2里比较原数据的，不能直接用前面的会报错*/
+run; quit;
+
+proc gplot data = out2;
+     plot Actual*Date = 1 adjusted*Date = 2/ overlay legend HAXIS = AXIS2;
+     symbol1 i = join v = star c = green;
+     symbol2 i = join v = star c = blue;
+     legend label = none value = ('original' 'adjusted');
+run; quit;
+
+proc gplot data = out2;
+     plot d10*Date/ HAXIS = AXIS2;
+title4 'Final Seasonal Factors';
+run; quit;
+
+proc gplot data = out2;
+     plot d12*Date/ HAXIS = AXIS2;
+	 symbol1 i = join v = star c = brown;
+title4 'Final Trend Cycle';
+run; quit;
+
+proc gplot data = out2;
+     plot d13*Date/ HAXIS = AXIS2;
+	 symbol1 i = join v = star c = red;
+title4 'Final Irregular Series';
+run; quit;
+
+data twosets;
+   set NZTourists;
+   set out2;
+run;
+
+proc print data = twosets ;
+   var Date Actual Seasonally_adjusted adjusted;
+*   title 'Two Data Sets';
+run;
+
+proc gplot data = twosets;
+     plot Seasonally_adjusted*Date adjusted*Date/ overlay legend VAXIS = AXIS1 HAXIS = AXIS2;
+	 symbol1 i = join v = star c = brown;
+     symbol2 i = join v = star c = blue;
+title4 'Seasonally Adjusted vs X-11 Adjusted';
+run; quit;
+
+********************************;
+*********** NZ GDP *************;
+********************************;
+
+TITLE1 'Quarterly New Zealand GDP Chain Volume at 2009/2010 Prices';
+TITLE2 'Quarter 2, 1987 � Quarter 3, 2019';
+
+/* Read in the data (Data-step) */
+PROC IMPORT OUT = NZGDP
+	DATAFILE = "H:/Nate-Nate/Nate/Teaching/AUT/MATH803-Y2020-S1/Lab/NZGDP.xlsx"
+	DBMS = xlsx REPLACE;
+	GETNAMES = YES;
+	DATAROW = 2;
+	*RANGE = "matrix$A2:B132";
+RUN;
+
+/* Convert character dates to numerics */ 
+data NZGDP;
+set NZGDP;
+format Date2 yyq4.;
+Date2 = input ( Date, yyq6.);
+run;
+
+proc print;
+run;
+
+/* Make a plot */
+PROC GPLOT DATA = NZGDP;
+	PLOT GDP*Date2 / VAXIS = AXIS1 HAXIS = AXIS2;
+    AXIS1 label = (angle = 90 'NZD Millions');
+    AXIS2 label = ('Time')
+          order = ('01apr87'd to '01apr21'd by year2); 
+RUN; QUIT;
+
+************************************;
+* NZ Consumable e-Card Transaction *;
+************************************;
+
+TITLE1 'Quarterly New Zealand Consumable e-Card Transaction';
+TITLE2 'Quarter 4, 2002 � Quarter 4, 2019';
+
+/* Read in the data (Data-step) */
+PROC IMPORT OUT = NZeCard
+	DATAFILE = "H:/Nate-Nate/Nate/Teaching/AUT/MATH803-Y2020-S1/Lab/NZeCard.xlsx"
+	DBMS = xlsx REPLACE;
+	GETNAMES = YES;
+	DATAROW = 2;
+	*RANGE = "matrix$A2:B132";
+RUN;
+
+/* Convert character dates to numerics */ 
+data NZeCard;
+set NZeCard;
+format Date2 yyq4.;
+Date2 = input ( Date, yyq6.);
+run;
+
+proc print;
+run;
+
+PROC GPLOT DATA = NZeCard;
+	PLOT Consumables*Date2 / VAXIS = AXIS1 HAXIS = AXIS2;
+    AXIS1 label = (angle = 90 'NZD Millions');
+    AXIS2 label = ('Time')
+          order = ('01oct02'd to '01oct20'd by year2); 
+RUN; QUIT;
+
+/***********************************/
+/* Time Series Regression Analysis */
+/***********************************/
+
+/* Subset the data */
+DATA NZGDP2;
+   SET NZGDP;
+   IF '01oct02'd <= Date2 <= '01oct20'd;
+   RUN;
+
+PROC PRINT DATA = NZGDP2; 
+RUN; 
+
+/* Combine two datasets */
+data GDP_eCard;
+   set NZGDP2;
+   set NZeCard;
+run; 
+
+proc print data = GDP_eCard;
+   var Date Date2 GDP Consumables;
+run;
+
+/* Estimate the model */
+TITLE1 'Predicting eCard Transaction using GDP';
+TITLE2 'Quarter 4, 2002 � Quarter 3, 2019';
+
+PROC REG DATA = GDP_eCard;
+MODEL Consumables = GDP / DW;
+OUTPUT OUT = OUT1 P = P R = R;
+RUN;
+quit;
+
+PROC AUTOREG DATA = GDP_eCard;
+MODEL Consumables = GDP / DWPROB;
+RUN;
+quit;
+
+
+
+
+
+
+
