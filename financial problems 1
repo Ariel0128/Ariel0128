@@ -1,0 +1,105 @@
+/*Question 4 */
+
+proc import out=work.nz50
+datafile= "/home/u47247130/sasuser.v94/NZ50.csv" /*already uploaded the file to SAS studio*/
+replace;
+run;
+
+proc gplot data=nz50;
+plot close*date;
+run;
+
+proc iml;
+start main;
+use nz50;
+read all var {close} into s;
+simple_return = j(nrow(s)-1,1,.);
+
+do i = 2 to nrow(s);
+	simple_return[i-1] = (s[i]-s[i-1])/s[i-1];
+end;
+
+standard_deviation = std(simple_return);
+historical_volatility = standard_deviation*sqrt(252);
+
+print simple_return;
+print standard_deviation;
+print historical_volatility;
+finish main;
+run;
+
+proc iml;
+start main;
+use nz50;
+read all var {close} into s;
+log_return = j(nrow(s)-1,1,.);
+
+do i = 2 to nrow(s);
+	log_return[i-1] = log(s[i]/s[i-1]);
+end;
+n = nrow(s)-1;
+af = 252;
+realized_volatility = 100* sqrt(af/n*sum(log_return`*log_return));
+print realized_volatility;
+finish main;
+run;
+	
+/*Question 5 (c)*/
+
+proc iml;
+start main;
+total_week1 = 150; /*50 trading weeks per year for 3 and 6 years*/
+total_week2 = 300;
+t1 = 3/150;
+t2 = 3/(300-150);
+s = j(total_week2,1,.);
+s[1] = 100;
+weeks = do(1,total_week2,1);
+
+do i = 2 to 300;
+	if i < 151
+	then s[i] = s[i-1]+rand("normal",t1,sqrt(3*t1));
+	else
+	s[i] = s[i-1]+rand("normal",2*t2,sqrt(t2));
+end;
+
+call Series(weeks,s);
+finish main;
+run;
+
+/*Question 5 (d) (e)*/
+proc iml;
+start main;
+total_week1 = 150; 
+total_week2 = 300;
+t1 = 3/150;
+t2 = 3/(300-150);
+s = j(total_week2,1,.);
+s[1] = 100;
+weeks = do(1,total_week2,1);
+
+num_sim = 10000;
+st1=j(num_sim,1,.);
+st2=j(num_sim,1,.);
+
+do k=1 to num_sim;
+
+do i = 2 to 300;
+	if i < 151
+	then s[i] = s[i-1]+rand("normal",t1,sqrt(3*t1));
+	else
+	s[i] = s[i-1]+rand("normal",2*t2,sqrt(t2));
+end;
+st1[k]=s[150];
+st2[k]=s[300];
+end;
+
+mean_st1 = mean(st1);
+var_st1 = var(st1);
+mean_st2 = mean(st2);
+var_st2 = var(st2);
+
+print mean_st1 var_st1 mean_st2 var_st2;
+finish main;
+run; 
+
