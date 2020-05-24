@@ -1,0 +1,314 @@
+PROC IMPORT OUT = HEC
+	DATAFILE = "/home/u47247130/sasuser.v94/math803/AKLHourlyElecCon.xlsx"
+	DBMS = xlsx REPLACE;
+	GETNAMES = YES;
+	DATAROW = 2;
+RUN;
+
+/*plot part of the data to observe period*/
+proc gplot data=HEC;
+	plot MW*DateTime / vaxis= axis1 haxis= axis2;
+    axis1 order = (20 to 80 by 10);
+    axis2 order = ('01apr16:00:00:00'dt to '05apr16:00:00:00'dt by hour24);
+    symbol1 i = join v = star c = green;
+run;quit;
+
+/*plot the whole data*/
+proc sgplot data=HEC;
+	series X = DateTime Y = MW;
+	xaxis grid values=('01apr16:00:00:00'dt to '31may16:00:00:00'dt by hour12);
+run;
+
+/*decriptive statistic*/
+proc means data=hec;
+	var MW;
+run;
+
+/*Question 2(a)*/
+
+/*create DateTime for the next two days*/
+data datetime2; 
+	do datetime2 = '01apr16:00:00:00'dt to '03jun16:00:00:00'dt by 3600;
+	output;
+	end;
+	format datetime2 datetime.;
+run;
+data HEC_future;
+	merge HEC datetime2;
+	drop DateTime;
+run;
+
+/*using REG to predict*/
+proc reg data = HEC_future;
+model MW = datetime2 / DW;
+output out = out_reg P = predict_reg R = R;
+run;
+quit;
+
+proc sgplot data=out_reg;
+	series X = datetime2 Y = MW;
+	series X = datetime2 Y = predict_reg;
+	xaxis grid values=('20may16:00:00:00'dt to '03jun16:00:00:00'dt by hour12);
+run;
+
+
+/*Question 2(b)*/
+
+/*Seasonal Exponential Smoothing*/
+proc esm data = HEC out = out_sses outfor = predict_sses lead = 48  
+	print=(statistics estimates);
+    forecast MW / method = seasonal;
+    id DateTime interval = hour; 
+run;
+
+/* additive Holt-Winters' Seasonal Exponential Smoothing */
+proc esm data = HEC out = out_aw outfor = predict_aw lead = 48 
+	print=(statistics estimates);
+    forecast MW / method = addwinters;
+    id DateTime interval = hour; 
+run;
+
+/* multiplicative Holt-Winters' Seasonal Exponential Smoothing */
+proc esm data = HEC out = out_w outfor = predict_w lead = 48 
+	print=(statistics estimates);
+    forecast MW / method = winters;
+    id DateTime interval = hour; 
+run;
+
+/*plot the prediction of three models*/
+data pre_aw;
+	set predict_aw;
+	rename predict= p_aw;
+	keep datetime predict;
+run;
+data pre_w;
+	set predict_w;
+	rename predict= p_w;
+	keep datetime predict;
+run;
+data prediction;
+	set predict_sses;
+	set pre_aw;
+	set pre_w;
+run;
+
+proc sgplot data=prediction;
+	series X = datetime Y = predict / legendlabel='Seasonal ES';
+	series X = datetime Y = p_w / legendlabel='Multiplicative HW' ;
+	series X = datetime Y = p_aw / lineattrs=(color=styg) legendlabel='Additive HW';
+	refline '01jun16:00:00:00'dt / axis=x;
+	xaxis values=('25may16:00:00:00'dt to '03jun16:00:00:00'dt by hour12);
+run;
+
+/*Question 3(a)*/
+
+/* Identification Stage */
+proc arima data = HEC;
+identify var = MW nlag= 40 stationarity = (adf = 1) ;
+identify var = MW(24) nlag= 40 stationarity = (adf = 1) ;
+identify var = MW(1,24) nlag= 40 stationarity = (adf = 1) ;
+run; quit;
+
+/* Estimation Stage */
+proc arima data = HEC;
+identify var = MW(1,24); 
+estimate p = (1)(24) q = (1)(24) method = ML;  
+outlier;
+run; quit;
+
+proc arima data = HEC;
+identify var = MW(1,24); 
+estimate p = (1)(24) q = (2)(24) method = ML;  
+outlier;
+run; quit;
+
+/* Forecasting Stage */
+proc arima data = HEC;
+identify var = MW(1,24); 
+estimate p = (1)(24) q =(2)(24) method = ML;  
+outlier;
+forecast lead = 48 interval = hour id = DateTime out = predict_arima; 
+run; quit; 
+
+/* Question 3(b) */
+
+/* Identification Stage */
+proc arima data=HEC;
+identify var= MW nlag=40 crosscorr=(temperature windspeed);
+identify var= MW(1,24) nlag=40 crosscorr=(temperature(24) windspeed(24));
+run;quit;
+
+/* Estimation and Diagnostic Check Stage */
+proc arima data = HEC;
+identify var = MW(1,24) nlag=48 crosscorr = (temperature(24) windspeed(24)); 
+estimate p = (1)(24) q =(2)(24) method = ML input = (temperature windspeed); 
+outlier;
+run; quit;
+
+proc arima data = HEC;
+identify var = MW(1,24) nlag=48 crosscorr = (temperature(24) windspeed(24)); 
+estimate p = (1)(24) q =(2)(24) method = ML input = ((1 24)temperature (1 24)windspeed); 
+outlier;
+run; quit;
+/* Forecasting Stage */
+proc arima data = HEC;
+identify var = temperature(24); 
+estimate p = (1);
+identify var = windspeed(24); 
+estimate p = (1);
+run;
+identify var = MW(1,24) nlag=48 crosscorr = (temperature(24) windspeed(24)); 
+estimate p = (1)(24) q =(2)(24) method = ML input = ((1 24)temperature (1 24)windspeed); 
+forecast lead=48 interval = hour id = datetime out = predict_x; 
+run; quit;
+
+/* Question 4(a) */
+
+data HEC_train;
+	set HEC;
+	if datetime < '30may16:00:00:00'dt;
+run;
+
+data HEC_test;
+	set HEC;
+	rename MW = actual;
+	if datetime > '29may16:23:00:00'dt;
+run;
+
+/* Question 4(b) */
+
+/*create the special training set of regression model */
+data datetime3; 
+	do datetime3 = '01apr16:00:00:00'dt to '31may16:23:00:00'dt by 3600;
+	output;
+	end;
+	format datetime3 datetime.;
+run;
+
+data HEC_train_reg;
+	merge HEC_train datetime3;
+	drop DateTime;
+run;
+/*use regression model to forecast on the training set*/
+proc reg data = HEC_train_reg;
+model MW = datetime3 / DW;
+output out = out_reg P = predict_reg R = R;
+run;
+quit;
+
+data out_reg;
+   SET out_reg;
+   if datetime3 > '29may16:23:00:00'dt;
+   keep predict_reg;
+run;
+/** evaluate forecast accuracy **/
+data reg_err;
+   set HEC_test;
+   set out_reg;
+   err_reg = actual-predict_reg;
+   e2_reg = err_reg**2;
+   rerr_reg = sqrt(e2_reg);
+   pcterr_reg = 100*abs(err_reg)/abs(actual);
+run;
+
+proc means n mean data = reg_err;
+var e2_reg rerr_reg pcterr_reg;
+label e2_reg = "Mean Squared Error";
+label rerr_reg = "Root Mean Square Deviation";
+label pcterr_reg = "Mean Absolute Percentage Error";
+run; quit;
+
+/*use exponential smoothing model to forecast on the training set*/
+proc esm data = HEC_train out = out_w outfor = predict_w lead = 48 ;
+    forecast MW / method = winters;
+    id DateTime interval = hour; 
+run;
+
+data out_w;
+   SET predict_w;
+   if datetime > '29may16:23:00:00'dt;
+   keep predict;
+run;
+
+/** evaluate forecast accuracy **/
+data w_err;
+   set HEC_test;
+   set out_w;
+   err_w = actual-predict;
+   e2_w = err_w**2;
+   rerr_w = sqrt(e2_w);
+   pcterr_w = 100*abs(err_w)/abs(actual);
+run;
+
+proc means n mean data = w_err;
+var e2_w rerr_w pcterr_w;
+label e2_w = "Mean Squared Error";
+label rerr_w = "Root Mean Square Deviation";
+label pcterr_w = "Mean Absolute Percentage Error";
+run; quit;
+
+/*use ARIMA model to forecast on the training set*/
+proc arima data = HEC_train;
+identify var = MW(1,24); 
+estimate p = (1)(24) q =(2)(24) method = ML; 
+outlier; 
+forecast lead = 48 interval = hour id = DateTime out = predict_arima; 
+run; quit; 
+
+data out_arima;
+   SET predict_arima;
+   if datetime > '29may16:23:00:00'dt;
+   keep forecast;
+run;
+
+/** evaluate forecast accuracy **/
+data arima_err;
+   set HEC_test;
+   set out_arima;
+   err_arima = actual-forecast;
+   e2_arima = err_arima**2;   
+   rerr_arima = sqrt(e2_arima);
+   pcterr_arima = 100*abs(err_arima)/abs(actual);
+run;
+
+proc means n mean data = arima_err;
+var e2_arima rerr_arima pcterr_arima;
+label e2_arima = "Mean Squared Error";
+label rerr_arima = "Root Mean Square Deviation";
+label pcterr_arima = "Mean Absolute Percentage Error";
+run; quit;
+
+/*use ARIMA model with explanatory variables to forecast on the training set*/
+proc arima data = HEC_train;
+identify var = temperature(24); 
+estimate p = (1);
+identify var = windspeed(24); 
+estimate p = (1);
+run;
+identify var = MW(1,24) nlag=48 crosscorr = (temperature(24) windspeed(24)); 
+estimate p = (1)(24) q =(2)(24) method = ML input = ((1 24)temperature (1 24)windspeed); 
+forecast lead=48 interval = hour id = datetime out = predict_x; 
+run; quit;
+
+data out_x;
+   SET predict_x;
+   if datetime > '29may16:23:00:00'dt;
+   keep forecast;
+run;
+
+/** evaluate forecast accuracy **/
+data x_err;
+   set HEC_test;
+   set out_x;
+   err_x = actual-forecast;
+   e2_x = err_x**2;
+   rerr_x = sqrt(e2_x);   
+   pcterr_x = 100*abs(err_x)/abs(actual);
+run;
+
+proc means n mean data = x_err;
+var e2_x rerr_x pcterr_x;
+label e2_x = "Mean Squared Error";
+label rerr_x = "Root Mean Square Deviation";
+label pcterr_x = "Mean Absolute Percentage Error";
+run; quit;
